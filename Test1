@@ -1,0 +1,201 @@
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.label import Label
+from kivy.uix.button import Button
+from kivy.lang import Builder
+from kivy.app import App
+from kivy.clock import Clock
+from kivy.uix.textinput import TextInput
+from kivy.uix.switch import Switch
+
+import kbhit
+
+import os
+import pyaudio, wave
+
+if os.name == 'nt':  # Windows
+    os = 'nt'
+    import msvcrt
+else:                # Posix (Linux, OS X)
+    os = 'LINUX'
+    import sys
+    import termios
+    import atexit
+    from select import select
+
+# special key definitions
+ENTER = 10
+ESC = 27
+BACKSPACE = 127
+TAB = 9
+
+class KBHit:
+    """ this class does the work """
+
+    def __init__(self):
+        """Creates a KBHit object to get keyboard input """
+
+        if os == 'LINUX':
+            # Save the terminal settings
+            self.fd = sys.stdin.fileno()
+            self.new_term = termios.tcgetattr(self.fd)
+            self.old_term = termios.tcgetattr(self.fd)
+
+            # New terminal setting unbuffered
+            self.new_term[3] = (self.new_term[3] & ~termios.ICANON & ~termios.ECHO)
+            termios.tcsetattr(self.fd, termios.TCSAFLUSH, self.new_term)
+
+            # Support normal-terminal reset at exit
+            atexit.register(self.set_normal_term)
+
+    def set_normal_term(self):
+        """ Resets to normal terminal.  On Windows does nothing """
+        if os == 'LINUX':
+            termios.tcsetattr(self.fd, termios.TCSAFLUSH, self.old_term)
+
+    def getch(self):
+        """ Returns a keyboard character after kbhit() has been called """
+        if os == 'nt':
+            return msvcrt.getch().decode('utf-8')
+        else:
+            return sys.stdin.read(1)
+
+    def kbhit(self):
+        """ Returns True if keyboard character was hit, False otherwise. """
+        if os == 'nt':
+            return msvcrt.kbhit()
+        else:
+            dr, dw, de = select([sys.stdin], [], [], 0)
+            return dr != []
+
+
+
+class AudioApp(App):
+    def build(self):
+        return AudioTool()
+
+
+class AudioTool(BoxLayout):
+    def __init__(self, **kwargs):
+        super(AudioTool, self).__init__(**kwargs)
+
+        self.start_button = self.ids['start_button']
+        self.stop_button = self.ids['stop_button']
+        self.display_label = self.ids['display_label']
+        self.switch = self.ids['duration_switch']  # Tutorial 3
+        self.user_input = self.ids['user_input']
+
+    def enforce_numeric(self):
+        '''Make sure the textinput only accepts numbers'''
+        if self.user_input.text.isdigit() == False:
+            digit_list = [num for num in self.user_input.text if num.isdigit()]
+            self.user_input.text = "".join(digit_list)
+
+    def startRecording_clock(self):
+
+        self.mins = 0  # Reset the minutes
+        self.zero = 1  # Reset if the function gets called more than once
+        self.duration = int(self.user_input.text)  # Take the input from the user and convert to a number
+        #Clock.schedule_interval(self.updateDisplay, 1)
+        self.start_button.disabled = True  # Prevents the user from clicking start again which may crash the program
+        self.stop_button.disabled = False
+        self.switch.disabled = True  # TUT Switch disabled when start is pressed
+       #self.r = MyRecorder()
+        Clock.schedule_once(self.startRecording)  ## NEW start the recording
+
+    def startRecording(self, dt):  # NEW start the recorder
+        self.MyRecorder()
+        Clock.unschedule(self.updateDisplay)
+        self.display_label.text = "Finished Recording"
+
+    def stopRecording(self):
+
+        Clock.unschedule(self.updateDisplay)
+        self.r.mRecorder.stop()  # NEW RECORDER VID 6
+        self.r.mRecorder.release()  # NEW RECORDER VID 6
+
+        Clock.unschedule(self.startRecording)  # NEW stop the recording of audio VID 6
+        self.display_label.text = 'Finished Recording!'
+        self.start_button.disabled = False
+        self.stop_button.disabled = True  # TUT 3
+        self.switch.disabled = False  # TUT 3 re enable the switch
+
+    def updateDisplay(self):
+        if self.switch.active == False:
+            if self.zero < 60 and len(str(self.zero)) == 1:
+                self.display_label.text = '0' + str(self.mins) + ':0' + str(self.zero)
+                self.zero += 1
+
+            elif self.zero < 60 and len(str(self.zero)) == 2:
+                self.display_label.text = '0' + str(self.mins) + ':' + str(self.zero)
+                self.zero += 1
+
+            elif self.zero == 60:
+                self.mins += 1
+                self.display_label.text = '0' + str(self.mins) + ':00'
+                self.zero = 1
+
+        elif self.switch.active == True:
+            if self.duration == 0:  # 0
+                self.display_label.text = 'Recording Finished!'
+                self.stopRecording()  # NEW VID 6 / THIS ONE LINE SHOULD TAKE CARE OF THE RECORDING NOT STOPPING.
+                # self.start_button.disabled = False # Re enable start
+                # self.stop_button.disabled = True # Re disable stop
+                # Clock.unschedule(self.updateDisplay) #DELETE FOR VID 6
+
+                # self.switch.disabled = False # Re enable the switch
+
+            elif self.duration > 0 and len(str(self.duration)) == 1:  # 0-9
+                self.display_label.text = '00' + ':0' + str(self.duration)
+                self.duration -= 1
+
+            elif self.duration > 0 and self.duration < 60 and len(str(self.duration)) == 2:  # 0-59
+                self.display_label.text = '00' + ':' + str(self.duration)
+                self.duration -= 1
+
+            elif self.duration >= 60 and len(str(self.duration % 60)) == 1:  # EG 01:07
+                self.mins = self.duration / 60
+                self.display_label.text = '0' + str(self.mins) + ':0' + str(self.duration % 60)
+                self.duration -= 1
+
+            elif self.duration >= 60 and len(str(self.duration % 60)) == 2:  # EG 01:17
+                self.mins = self.duration / 60
+                self.display_label.text = '0' + str(self.mins) + ':' + str(self.duration % 60)
+                self.duration -= 1
+    def MyRecorder(self):
+
+        CHUNK = 1024;
+        FORMAT = pyaudio.paInt16;
+        CHANNELS = 2;
+        RATE = 44100
+        p = pyaudio.PyAudio()
+        stream = p.open(format=FORMAT, channels=CHANNELS, rate=RATE, input=True,  # ahora es flujo de entrada
+                        frames_per_buffer=CHUNK)  # tamanio buffer == CHUNK !!
+
+        frames = []  # lista de samples
+        kb = kbhit.KBHit()
+        c = ' '
+
+        # while c != 'q':  # grabando
+        while c != 'q':
+            self.updateDisplay()
+
+            data = stream.read(CHUNK)  # recogida de samples
+            frames.append(data)
+            if kb.kbhit():
+                print("SIO")
+                c = kb.getch()
+
+        kb.set_normal_term();
+        stream.stop_stream();
+        stream.close();
+        p.terminate()
+        # guardamos wav
+        wf = wave.open("record.wav", 'wb')
+        wf.setnchannels(CHANNELS);
+        wf.setsampwidth(p.get_sample_size(FORMAT));
+        wf.setframerate(RATE)
+        wf.writeframes(b''.join(frames))
+        wf.close()
+
+if __name__ == '__main__':
+    AudioApp().run()

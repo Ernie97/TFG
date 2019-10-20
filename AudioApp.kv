@@ -1,0 +1,25 @@
+<AudioTool>
+  orientation: 'vertical'
+  Label:
+    id: display_label
+
+  BoxLayout:
+    size_hint: 1, .2
+    TextInput:
+      id: user_input
+      disabled: duration_switch.active == False
+      text: '5'
+      on_text: root.enforce_numeric()
+    Switch:
+      id: duration_switch
+  BoxLayout:
+    Button:
+      id: start_button
+      text: 'Start Recording'
+      on_release: root.startRecording_clock()
+    Button:
+      id: stop_button
+      text: 'Stop Recording'
+      on_release: root.stopRecording()
+      disabled: True
+ 
